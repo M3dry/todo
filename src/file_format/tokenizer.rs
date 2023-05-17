@@ -11,16 +11,6 @@ pub enum Token {
     Newline,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TextToken {
-    Verbatim(String),
-    Underline(String),
-    Crossed(String),
-    Bold(String),
-    Italic(String),
-    Text(String),
-}
-
 pub struct Tokens(VecDeque<Token>);
 
 impl Tokens {
@@ -106,6 +96,86 @@ impl FromStr for Tokens {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TextToken {
+    Verbatim(Box<TextToken>),
+    Underline(Box<TextToken>),
+    Crossed(Box<TextToken>),
+    Bold(Box<TextToken>),
+    Italic(Box<TextToken>),
+    Text(String),
+}
+
+impl TextToken {
+    fn from_iter<I: Iterator<Item = char>>(iter: &mut Peekable<I>) -> Self {
+        match iter.peek().unwrap() {
+            '\n' => unreachable!(),
+            '`' => {
+                iter.next();
+                let ret = Self::Verbatim(Box::new(Self::from_iter(iter)));
+
+                if iter.next() != Some('`') {
+                    todo!()
+                }
+
+                return ret;
+            },
+            '_' => {
+                iter.next();
+                let ret = Self::Underline(Box::new(Self::from_iter(iter)));
+
+                if iter.next() != Some('_') {
+                    todo!()
+                }
+
+                return ret;
+            },
+            '-' => {
+                iter.next();
+                let ret = Self::Crossed(Box::new(Self::from_iter(iter)));
+
+                if iter.next() != Some('-') {
+                    todo!()
+                }
+
+                return ret;
+            },
+            '*' => {
+                iter.next();
+                let ret = Self::Bold(Box::new(Self::from_iter(iter)));
+
+                if iter.next() != Some('*') {
+                    todo!()
+                }
+
+                return ret;
+            },
+            '/' => {
+                iter.next();
+                let ret = Self::Italic(Box::new(Self::from_iter(iter)));
+
+                if iter.next() != Some('/') {
+                    todo!()
+                }
+
+                return ret;
+            },
+            _ => {
+                let mut text = vec![iter.next().unwrap()];
+                while let Some(char) = iter.peek() {
+                    if ['`', '_', '-', '*', '/', '\n'].contains(char) {
+                        break;
+                    }
+
+                    text.push(iter.next().unwrap())
+                }
+
+                return Self::Text(text.into_iter().collect());
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TextTokens(VecDeque<TextToken>);
 
 impl TextTokens {
@@ -119,84 +189,7 @@ impl TextTokens {
         while let Some(char) = iter.peek() {
             match char {
                 '\n' => return Self(tokens),
-                '`' => {
-                    iter.next();
-                    let mut verbatim = vec![];
-
-                    while let Some(char) = iter.next() {
-                        if char == '`' {
-                            break;
-                        }
-                        verbatim.push(char)
-                    }
-
-                    tokens.push_back(TextToken::Verbatim(verbatim.into_iter().collect()));
-                },
-                '_' => {
-                    iter.next();
-                    let mut underline = vec![];
-
-                    while let Some(char) = iter.next() {
-                        if char == '_' {
-                            break;
-                        }
-                        underline.push(char)
-                    }
-
-                    tokens.push_back(TextToken::Underline(underline.into_iter().collect()));
-                },
-                '-' => {
-                    iter.next();
-                    let mut crossed = vec![];
-
-                    while let Some(char) = iter.next() {
-                        if char == '-' {
-                            break;
-                        }
-                        crossed.push(char)
-                    }
-
-                    tokens.push_back(TextToken::Crossed(crossed.into_iter().collect()));
-                },
-                '*' => {
-                    iter.next();
-                    let mut bold = vec![];
-
-                    while let Some(char) = iter.next() {
-                        if char == '*' {
-                            break;
-                        }
-                        bold.push(char)
-                    }
-
-                    tokens.push_back(TextToken::Bold(bold.into_iter().collect()));
-                },
-                '/' => {
-                    iter.next();
-                    let mut italic = vec![];
-
-                    while let Some(char) = iter.next() {
-                        if char == '/' {
-                            break;
-                        }
-                        italic.push(char)
-                    }
-
-                    tokens.push_back(TextToken::Italic(italic.into_iter().collect()));
-                },
-                _ => {
-                    let mut text = vec![iter.next().unwrap()];
-
-                    while let Some(char) = iter.peek() {
-                        if ['\n', '`', '_', '-', '*', '/'].contains(char) {
-                            break;
-                        }
-
-                        text.push(iter.next().unwrap())
-                    }
-
-                    tokens.push_back(TextToken::Text(text.into_iter().collect()))
-                }
+                _ => tokens.push_back(TextToken::from_iter(iter))
             }
         }
 

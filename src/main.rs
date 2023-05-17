@@ -55,6 +55,7 @@ enum Command {
     Edit,
     Show,
     Raw,
+    EwwShow,
     Config,
 }
 
@@ -158,6 +159,25 @@ fn main() {
                     Err(err) => err.to_string(),
                 }
             );
+        }
+        Command::EwwShow if exists => {
+            let tokens: Tokens = std::fs::read_to_string(&file).unwrap().parse().unwrap();
+            let mut vecdeque = tokens.to_vecdeque();
+
+            println!(
+                "{}",
+                match parser::File::parse(&config, &mut vecdeque) {
+                    Ok(ok) => serde_json::to_string_pretty(&file_format::eww::EwwTodo::from_todos(
+                        ok.headings()
+                            .into_iter()
+                            .flat_map(|heading| heading.todos())
+                            .collect(),
+                        &config
+                    ))
+                    .unwrap(),
+                    Err(err) => err.to_string(),
+                }
+            )
         }
         Command::Config => {
             let config = Config::get().unwrap();
