@@ -78,8 +78,8 @@ impl std::fmt::Display for ParserErrorStack {
 }
 
 macro_rules! error {
-    ($func:literal, $value:ident) => {
-        if let Token::Text(iden) = error!($func, $value.pop_front(), [Token::Text(_)])? {
+    ($func:literal, $value:ident, $en:tt) => {
+        if let Token::$en(iden) = error!($func, $value.pop_front(), [Token::$en(_)])? {
             iden
         } else {
             unreachable!()

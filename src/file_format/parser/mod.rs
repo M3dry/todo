@@ -1,8 +1,8 @@
-use std::collections::VecDeque;
+use std::{collections::VecDeque};
 
 use crate::config::Config;
 
-use super::tokenizer::Token;
+use super::tokenizer::{Token, TextToken};
 use error::{Error, ParserError, ParserErrorStack};
 use serde::{Deserialize, Serialize};
 use textwrap::termwidth;
@@ -41,7 +41,7 @@ impl Parse for File {
     where
         Self: Sized,
     {
-        matches!(tokens[1], Token::Colon)
+        matches!(tokens[0], Token::Heading(_))
     }
 
     fn print(&self, config: &Config) -> String {
@@ -67,8 +67,7 @@ impl Parse for Heading {
     where
         Self: Sized,
     {
-        let name = error!("Heading", tokens);
-        let _ = error!("Heading", tokens.pop_front(), [Token::Colon])?;
+        let name = error!("Heading", tokens, Heading);
         let _ = error!("Heading", tokens.pop_front(), [Token::Newline])?;
         let mut body = vec![];
 
@@ -91,7 +90,7 @@ impl Parse for Heading {
                 let _ = error!("Heading", tokens.pop_front(), [Token::Newline])?;
             } else if Text::check(&tokens) {
                 body.push(UnderHeading::Text(error!(
-                    Text::parse(config, tokens),
+                    PrintText::parse(config, tokens),
                     "Heading"
                 )?));
                 let _ = error!("Heading", tokens.pop_front(), [Token::Newline])?;
@@ -110,7 +109,7 @@ impl Parse for Heading {
     where
         Self: Sized,
     {
-        matches!(tokens[1], Token::Colon)
+        matches!(tokens[0], Token::Heading(_))
     }
 
     fn print(&self, config: &Config) -> String {
@@ -137,13 +136,13 @@ impl Parse for Heading {
 enum UnderHeading {
     Todo(Todo),
     Bullet(Bullet),
-    Text(Text),
+    Text(PrintText),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Todo {
-    state: Option<TodoState>,
-    description: String,
+    state: TodoState,
+    description: Text,
 }
 
 impl Parse for Todo {
@@ -152,13 +151,9 @@ impl Parse for Todo {
         Self: Sized,
     {
         let _ = error!("Todo", tokens.pop_front(), [Token::BracketOpen])?;
-        let state = if TodoState::check(&tokens) {
-            Some(error!(TodoState::parse(config, tokens), "Todo")?)
-        } else {
-            None
-        };
+        let state = error!(TodoState::parse(config, tokens), "Todo")?;
         let _ = error!("Todo", tokens.pop_front(), [Token::BracketClose])?;
-        let description = error!("Todo", tokens);
+        let description = error!(Text::parse(config, tokens), "Todo")?;
         let _ = error!("Todo", tokens.pop_front(), [Token::Newline])?;
 
         Ok(Self { state, description })
@@ -172,68 +167,22 @@ impl Parse for Todo {
     }
 
     fn print(&self, config: &Config) -> String {
-        let (brackets, state) = if let Some(state) = &self.state {
-            (false, state.print(&config))
-        } else if let Some(ops) = &config.todo_state_ops {
-            (ops.brackets, ops.default.to_owned())
+        let brackets = if let Some(ops) = &config.todo_state_ops {
+            ops.brackets
         } else {
-            (false, " ".to_owned())
+            true
+        };
+        let state = if self.state.empty() {
+            " ".to_owned()
+        } else {
+            self.state.print(config)
         };
 
         if brackets {
-            format!("[{state}] {}", self.description)
+            format!("[{state}] {}", self.description.print(config))
         } else {
-            format!("{state} {}", self.description)
+            format!("{state} {}", self.description.print(config))
         }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct Bullet(String);
-
-impl Parse for Bullet {
-    fn parse(_: &Config, tokens: &mut VecDeque<Token>) -> Result<Self, ParserError>
-        where
-            Self: Sized {
-        let _ = error!("Bullet", tokens.pop_front(), [Token::Dash])?;
-        Ok(Self(error!("Bullet", tokens)))
-    }
-
-    fn check(tokens: &VecDeque<Token>) -> bool
-        where
-            Self: Sized {
-        matches!(tokens[0], Token::Dash)
-    }
-
-    fn print(&self, config: &Config) -> String {
-        if let Some(bullet) = &config.bullet_point {
-            format!("{bullet} {}", self.0)
-        } else {
-            format!("- {}", self.0)
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct Text(String);
-
-impl Parse for Text {
-    fn parse(_: &Config, tokens: &mut VecDeque<Token>) -> Result<Self, ParserError>
-    where
-        Self: Sized,
-    {
-        Ok(Self(error!("Text", tokens)))
-    }
-
-    fn check(tokens: &VecDeque<Token>) -> bool
-    where
-        Self: Sized,
-    {
-        matches!(tokens[0], Token::Text(_))
-    }
-
-    fn print(&self, _: &Config) -> String {
-        textwrap::indent(&textwrap::fill(&self.0, termwidth() - 4), "    ") + "\n"
     }
 }
 
@@ -244,12 +193,24 @@ enum TodoState {
     Other(String),
 }
 
+impl TodoState {
+    fn empty(&self) -> bool {
+        match self {
+            Self::Defined(str) | Self::Other(str) => str.is_empty(),
+        }
+    }
+}
+
 impl Parse for TodoState {
     fn parse(config: &Config, tokens: &mut VecDeque<Token>) -> Result<Self, ParserError>
     where
         Self: Sized,
     {
-        let str = error!("TodoState", tokens);
+        let str = if let Token::Inside(text) = error!("TodoState", tokens.pop_front(), [Token::Inside(_)])? {
+            text
+        } else {
+            unreachable!()
+        };
 
         Ok(if let Some(state) = config.todo_state.get(&str) {
             Self::Defined(state.to_owned())
@@ -264,7 +225,7 @@ impl Parse for TodoState {
     {
         matches!(
             (&tokens[0], &tokens[1]),
-            (Token::Text(_), Token::BracketClose)
+            (Token::Inside(_), Token::BracketClose)
         )
     }
 
@@ -274,5 +235,110 @@ impl Parse for TodoState {
             Self::Other(str) => str,
         }
         .to_owned()
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct Bullet(Text);
+
+impl Parse for Bullet {
+    fn parse(config: &Config, tokens: &mut VecDeque<Token>) -> Result<Self, ParserError>
+        where
+            Self: Sized {
+        Ok(Self(error!(Text::parse(config, tokens), "Bullet")?))
+    }
+
+    fn check(tokens: &VecDeque<Token>) -> bool
+        where
+            Self: Sized {
+        matches!(tokens[0], Token::Bullet(_))
+    }
+
+    fn print(&self, config: &Config) -> String {
+        if let Some(bullet) = &config.bullet_point {
+            format!("{bullet} {}", self.0.print(config))
+        } else {
+            format!("- {}", self.0.print(config))
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct PrintText(Text);
+
+impl Parse for PrintText {
+    fn parse(config: &Config, tokens: &mut VecDeque<Token>) -> Result<Self, ParserError>
+        where
+            Self: Sized {
+        Ok(Self(Text::parse(config, tokens)?))
+    }
+    fn check(tokens: &VecDeque<Token>) -> bool
+        where
+            Self: Sized {
+        Text::check(tokens)
+    }
+
+    fn print(&self, config: &Config) -> String {
+        textwrap::indent(&textwrap::fill(&self.0.print(config), termwidth() - 4), "    ") + "\n"
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct Text(Vec<TextOps>);
+
+impl Parse for Text {
+    fn parse(_: &Config, tokens: &mut VecDeque<Token>) -> Result<Self, ParserError>
+        where
+            Self: Sized {
+        Ok(Self(match error!("Text", tokens.pop_front(), [Token::Bullet(_), Token::Text(_)])? {
+            Token::Bullet(ops) | Token::Text(ops) => ops.to_vecdeque(),
+            _ => unreachable!(),
+        }.into_iter().map(|op|TextOps::from(op)).collect()))
+    }
+
+    fn check(tokens: &VecDeque<Token>) -> bool
+        where
+            Self: Sized {
+        matches!(tokens[0], Token::Text(_) | Token::Bullet(_))
+    }
+
+    fn print(&self, _: &Config) -> String {
+        self.0.iter().map(|op| op.to_string()).collect::<Vec<String>>().join("")
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+enum TextOps {
+    Verbatim(String),
+    Underline(String),
+    Crossed(String),
+    Bold(String),
+    Italic(String),
+    Normal(String),
+}
+
+impl From<TextToken> for TextOps {
+    fn from(value: TextToken) -> Self {
+        match value {
+            TextToken::Verbatim(str) => Self::Verbatim(str),
+            TextToken::Underline(str) => Self::Underline(str),
+            TextToken::Crossed(str) => Self::Crossed(str),
+            TextToken::Bold(str) => Self::Bold(str),
+            TextToken::Italic(str) => Self::Italic(str),
+            TextToken::Text(str) => Self::Normal(str),
+        }
+    }
+}
+
+impl std::fmt::Display for TextOps {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", match self {
+            Self::Verbatim(str) => "`".to_owned() + str + "`",
+            Self::Underline(str) => "_".to_owned() + str + "_",
+            Self::Crossed(str) => "-".to_owned() + str + "-",
+            Self::Bold(str) => "*".to_owned() + str + "*",
+            Self::Italic(str) => "/".to_owned() + str + "/",
+            Self::Normal(str) => str.to_owned(),
+        })
     }
 }

@@ -1,12 +1,23 @@
-use std::{str::FromStr, collections::VecDeque};
+use std::{str::FromStr, collections::VecDeque, iter::Peekable};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Token {
     BracketOpen,
+    Inside(String),
     BracketClose,
-    Dash,
-    Colon,
+    Heading(String),
+    Bullet(TextTokens),
+    Text(TextTokens),
     Newline,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TextToken {
+    Verbatim(String),
+    Underline(String),
+    Crossed(String),
+    Bold(String),
+    Italic(String),
     Text(String),
 }
 
@@ -25,30 +36,170 @@ impl FromStr for Tokens {
         let mut tokens = VecDeque::new();
         let mut chars = s.chars().peekable();
 
-        while let Some(char) = chars.next() {
+        while let Some(char) = chars.peek() {
             match char {
-                '[' => tokens.push_back(Token::BracketOpen),
-                ']' => tokens.push_back(Token::BracketClose),
-                ':' => tokens.push_back(Token::Colon),
-                '\n' => tokens.push_back(Token::Newline),
-                '-' => tokens.push_back(Token::Dash),
-                ' ' => continue,
-                text => {
-                    let mut text = vec![text];
+                '[' => {
+                    chars.next();
+                    tokens.push_back(Token::BracketOpen);
+                    let mut inside = vec![];
 
-                    while let Some(char) = chars.peek() {
-                        if *char != '[' && *char != ']' && *char != '\n' && *char != ':' {
-                            text.push(chars.next().unwrap());
-                        } else {
+                    while let Some(' ') = chars.peek() {
+                        chars.next();
+                    }
+                    
+                    while let Some(char) = chars.next() {
+                        if char == ']' {
                             break;
                         }
+
+                        inside.push(char);
                     }
 
-                    tokens.push_back(Token::Text(text.into_iter().collect()))
+                    tokens.push_back(Token::Inside(inside.into_iter().collect()));
+                    tokens.push_back(Token::BracketClose);
+                },
+                '#' => {
+                    chars.next();
+                    let mut heading = vec![];
+
+                    while let Some(' ') = chars.peek() {
+                        chars.next();
+                    }
+
+                    while let Some(char) = chars.next() {
+                        if char == '\n' {
+                            tokens.push_back(Token::Heading(heading.into_iter().collect()));
+                            tokens.push_back(Token::Newline);
+                            break;
+                        }
+
+                        heading.push(char);
+                    }
+                }
+                '\n' => {
+                    chars.next();
+                    tokens.push_back(Token::Newline)
+                },
+                '-' => {
+                    chars.next();
+                    while let Some(' ') = chars.peek() {
+                        chars.next();
+                    }
+                    
+                    tokens.push_back(Token::Bullet(TextTokens::from_iter(&mut chars)))
+                },
+                ' ' => {
+                    chars.next();
+                },
+                _ => {
+                    while let Some(' ') = chars.peek() {
+                        chars.next();
+                    }
+                    
+                    tokens.push_back(Token::Text(TextTokens::from_iter(&mut chars)))
                 }
             }
         }
 
         return Ok(Self(tokens));
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TextTokens(VecDeque<TextToken>);
+
+impl TextTokens {
+    pub fn to_vecdeque(self) -> VecDeque<TextToken> {
+        self.0
+    }
+
+    fn from_iter<I: Iterator<Item = char>>(iter: &mut Peekable<I>) -> Self {
+        let mut tokens = VecDeque::new();
+
+        while let Some(char) = iter.peek() {
+            match char {
+                '\n' => return Self(tokens),
+                '`' => {
+                    iter.next();
+                    let mut verbatim = vec![];
+
+                    while let Some(char) = iter.next() {
+                        if char == '`' {
+                            break;
+                        }
+                        verbatim.push(char)
+                    }
+
+                    tokens.push_back(TextToken::Verbatim(verbatim.into_iter().collect()));
+                },
+                '_' => {
+                    iter.next();
+                    let mut underline = vec![];
+
+                    while let Some(char) = iter.next() {
+                        if char == '_' {
+                            break;
+                        }
+                        underline.push(char)
+                    }
+
+                    tokens.push_back(TextToken::Underline(underline.into_iter().collect()));
+                },
+                '-' => {
+                    iter.next();
+                    let mut crossed = vec![];
+
+                    while let Some(char) = iter.next() {
+                        if char == '-' {
+                            break;
+                        }
+                        crossed.push(char)
+                    }
+
+                    tokens.push_back(TextToken::Crossed(crossed.into_iter().collect()));
+                },
+                '*' => {
+                    iter.next();
+                    let mut bold = vec![];
+
+                    while let Some(char) = iter.next() {
+                        if char == '*' {
+                            break;
+                        }
+                        bold.push(char)
+                    }
+
+                    tokens.push_back(TextToken::Bold(bold.into_iter().collect()));
+                },
+                '/' => {
+                    iter.next();
+                    let mut italic = vec![];
+
+                    while let Some(char) = iter.next() {
+                        if char == '/' {
+                            break;
+                        }
+                        italic.push(char)
+                    }
+
+                    tokens.push_back(TextToken::Italic(italic.into_iter().collect()));
+                },
+                _ => {
+                    let mut text = vec![iter.next().unwrap()];
+
+                    while let Some(char) = iter.peek() {
+                        if ['\n', '`', '_', '-', '*', '/'].contains(char) {
+                            break;
+                        }
+
+                        text.push(iter.next().unwrap())
+                    }
+
+                    tokens.push_back(TextToken::Text(text.into_iter().collect()))
+                }
+            }
+        }
+
+        return Self(tokens);
     }
 }

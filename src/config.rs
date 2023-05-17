@@ -82,7 +82,7 @@ impl TodoStateOps {
     fn from_table(table: Table) -> LuaResult<Self> {
         Ok(Self {
             default: table.get::<_, String>("default")?,
-            brackets: table.get::<_, bool>("brackets").unwrap_or(false),
+            brackets: table.get::<_, bool>("brackets").unwrap_or(true),
         })
     }
 }
