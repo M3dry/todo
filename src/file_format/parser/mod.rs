@@ -383,22 +383,32 @@ impl Parse for Text {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum TextOp {
-    Verbatim(Box<TextOp>),
-    Underline(Box<TextOp>),
-    Crossed(Box<TextOp>),
-    Bold(Box<TextOp>),
-    Italic(Box<TextOp>),
+    Verbatim(Vec<TextOp>),
+    Underline(Vec<TextOp>),
+    Crossed(Vec<TextOp>),
+    Bold(Vec<TextOp>),
+    Italic(Vec<TextOp>),
     Normal(String),
 }
 
 impl From<TextToken> for TextOp {
     fn from(value: TextToken) -> Self {
         match value {
-            TextToken::Verbatim(token) => Self::Verbatim(Box::new(Self::from(*token))),
-            TextToken::Underline(token) => Self::Underline(Box::new(Self::from(*token))),
-            TextToken::Crossed(token) => Self::Crossed(Box::new(Self::from(*token))),
-            TextToken::Bold(token) => Self::Bold(Box::new(Self::from(*token))),
-            TextToken::Italic(token) => Self::Italic(Box::new(Self::from(*token))),
+            TextToken::Verbatim(tokens) => {
+                Self::Verbatim(tokens.into_iter().map(|token| Self::from(token)).collect())
+            }
+            TextToken::Underline(tokens) => {
+                Self::Underline(tokens.into_iter().map(|token| Self::from(token)).collect())
+            }
+            TextToken::Crossed(tokens) => {
+                Self::Crossed(tokens.into_iter().map(|token| Self::from(token)).collect())
+            }
+            TextToken::Bold(tokens) => {
+                Self::Bold(tokens.into_iter().map(|token| Self::from(token)).collect())
+            }
+            TextToken::Italic(tokens) => {
+                Self::Italic(tokens.into_iter().map(|token| Self::from(token)).collect())
+            }
             TextToken::Text(str) => Self::Normal(str),
         }
     }
@@ -410,11 +420,11 @@ impl std::fmt::Display for TextOp {
             f,
             "{}",
             match self {
-                Self::Verbatim(str) => format!("`{str}`"),
-                Self::Underline(str) => format!("_{str}_"),
-                Self::Crossed(str) => format!("-{str}-"),
-                Self::Bold(str) => format!("*{str}*"),
-                Self::Italic(str) => format!("/{str}/"),
+                Self::Verbatim(strs) => format!("`{}`", strs.into_iter().map(|str| str.to_string()).collect::<Vec<String>>().join("")),
+                Self::Underline(strs) => format!("_{}_", strs.into_iter().map(|str| str.to_string()).collect::<Vec<String>>().join("")),
+                Self::Crossed(strs) => format!("-{}-", strs.into_iter().map(|str| str.to_string()).collect::<Vec<String>>().join("")),
+                Self::Bold(strs) => format!("*{}*", strs.into_iter().map(|str| str.to_string()).collect::<Vec<String>>().join("")),
+                Self::Italic(strs) => format!("/{}/", strs.into_iter().map(|str| str.to_string()).collect::<Vec<String>>().join("")),
                 Self::Normal(str) => str.to_owned(),
             }
         )

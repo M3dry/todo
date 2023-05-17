@@ -26,11 +26,11 @@ impl EwwTodo {
 
 fn op_to_string(op: &TextOp) -> String {
     match op {
-        TextOp::Verbatim(op) => format!("(box :class \"verbatim-text\" :halign \"start\" {})", op_to_string(op)),
-        TextOp::Underline(op) => format!("(box :class \"underline-text\" :halign \"start\" {})", op_to_string(op)),
-        TextOp::Crossed(op) => format!("(box :class \"crossed-text\" :halign \"start\" {})", op_to_string(op)),
-        TextOp::Bold(op) => format!("(box :class \"bold-text\" :halign \"start\" {})", op_to_string(op)),
-        TextOp::Italic(op) => format!("(box :class \"italic-text\" :halign \"start\" {})", op_to_string(op)),
+        TextOp::Verbatim(ops) => format!("(box :class \"verbatim-text\" :halign \"start\" {})", ops.into_iter().map(|op| op_to_string(op)).collect::<Vec<String>>().join("")),
+        TextOp::Underline(ops) => format!("(box :class \"underline-text\" :halign \"start\" {})", ops.into_iter().map(|op| op_to_string(op)).collect::<Vec<String>>().join("")),
+        TextOp::Crossed(ops) => format!("(box :class \"crossed-text\" :halign \"start\" {})", ops.into_iter().map(|op| op_to_string(op)).collect::<Vec<String>>().join("")),
+        TextOp::Bold(ops) => format!("(box :class \"bold-text\" :halign \"start\" {})", ops.into_iter().map(|op| op_to_string(op)).collect::<Vec<String>>().join("")),
+        TextOp::Italic(ops) => format!("(box :class \"italic-text\" :halign \"start\" {})", ops.into_iter().map(|op| op_to_string(op)).collect::<Vec<String>>().join("")),
         TextOp::Normal(str) => format!("(label :class \"normal-text\" :halign \"start\" :text \"{str}\")"),
     }
 }
