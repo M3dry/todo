@@ -388,6 +388,7 @@ pub enum TextOp {
     Crossed(Vec<TextOp>),
     Bold(Vec<TextOp>),
     Italic(Vec<TextOp>),
+    TextExtra(char, Vec<TextOp>),
     Normal(String),
 }
 
@@ -409,6 +410,10 @@ impl From<TextToken> for TextOp {
             TextToken::Italic(tokens) => {
                 Self::Italic(tokens.into_iter().map(|token| Self::from(token)).collect())
             }
+            TextToken::TextExtra(char, tokens) => Self::TextExtra(
+                char,
+                tokens.into_iter().map(|token| Self::from(token)).collect(),
+            ),
             TextToken::Text(str) => Self::Normal(str),
         }
     }
@@ -420,11 +425,50 @@ impl std::fmt::Display for TextOp {
             f,
             "{}",
             match self {
-                Self::Verbatim(strs) => format!("`{}`", strs.into_iter().map(|str| str.to_string()).collect::<Vec<String>>().join("")),
-                Self::Underline(strs) => format!("_{}_", strs.into_iter().map(|str| str.to_string()).collect::<Vec<String>>().join("")),
-                Self::Crossed(strs) => format!("-{}-", strs.into_iter().map(|str| str.to_string()).collect::<Vec<String>>().join("")),
-                Self::Bold(strs) => format!("*{}*", strs.into_iter().map(|str| str.to_string()).collect::<Vec<String>>().join("")),
-                Self::Italic(strs) => format!("/{}/", strs.into_iter().map(|str| str.to_string()).collect::<Vec<String>>().join("")),
+                Self::Verbatim(strs) => format!(
+                    "`{}`",
+                    strs.into_iter()
+                        .map(|str| str.to_string())
+                        .collect::<Vec<String>>()
+                        .join("")
+                ),
+                Self::Underline(strs) => format!(
+                    "_{}_",
+                    strs.into_iter()
+                        .map(|str| str.to_string())
+                        .collect::<Vec<String>>()
+                        .join("")
+                ),
+                Self::Crossed(strs) => format!(
+                    "-{}-",
+                    strs.into_iter()
+                        .map(|str| str.to_string())
+                        .collect::<Vec<String>>()
+                        .join("")
+                ),
+                Self::Bold(strs) => format!(
+                    "*{}*",
+                    strs.into_iter()
+                        .map(|str| str.to_string())
+                        .collect::<Vec<String>>()
+                        .join("")
+                ),
+                Self::Italic(strs) => format!(
+                    "/{}/",
+                    strs.into_iter()
+                        .map(|str| str.to_string())
+                        .collect::<Vec<String>>()
+                        .join("")
+                ),
+                Self::TextExtra(char, strs) => {
+                    format!(
+                        "{char}{}",
+                        strs.into_iter()
+                            .map(|str| str.to_string())
+                            .collect::<Vec<String>>()
+                            .join("")
+                    )
+                }
                 Self::Normal(str) => str.to_owned(),
             }
         )

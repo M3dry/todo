@@ -102,23 +102,32 @@ pub enum TextToken {
     Crossed(Vec<TextToken>),
     Bold(Vec<TextToken>),
     Italic(Vec<TextToken>),
+    TextExtra(char, Vec<TextToken>),
     Text(String),
 }
 
 impl TextToken {
     fn from_iter<I: Iterator<Item = char>>(iter: &mut Peekable<I>) -> Self {
         match iter.peek().unwrap() {
-            '\n' => unreachable!(),
+            '\n' => return Self::Text(format!("")),
             '`' => {
                 iter.next();
                 let mut ret = vec![Self::from_iter(iter)];
 
                 while let Some(char) = iter.peek() {
-                    if *char == '`' {
+                    if *char == '\n' {
+                        return Self::TextExtra('`', ret);
+                    } else if *char == '`' {
                         iter.next();
                         break;
                     } else if ['_', '-', '*', '/'].contains(char) {
-                        ret.push(Self::from_iter(iter));
+                        let ch = *char;
+                        let token = Self::from_iter(iter);
+
+                        if matches!(&token, Self::Text(text) if text.is_empty()) {
+                            ret.push(Self::TextExtra(ch, vec![]))
+                        }
+                        ret.push(token);
                     }
                 }
 
@@ -129,7 +138,9 @@ impl TextToken {
                 let mut ret = vec![Self::from_iter(iter)];
 
                 while let Some(char) = iter.peek() {
-                    if *char == '_' {
+                    if *char == '\n' {
+                        return Self::TextExtra('_', ret);
+                    } else if *char == '_' {
                         iter.next();
                         break;
                     } else if ['`', '-', '*', '/'].contains(char) {
@@ -144,7 +155,9 @@ impl TextToken {
                 let mut ret = vec![Self::from_iter(iter)];
 
                 while let Some(char) = iter.peek() {
-                    if *char == '-' {
+                    if *char == '\n' {
+                        return Self::TextExtra('-', ret);
+                    } else if *char == '-' {
                         iter.next();
                         break;
                     } else if ['`', '_', '*', '/'].contains(char) {
@@ -159,7 +172,9 @@ impl TextToken {
                 let mut ret = vec![Self::from_iter(iter)];
 
                 while let Some(char) = iter.peek() {
-                    if *char == '*' {
+                    if *char == '\n' {
+                        return Self::TextExtra('*', ret);
+                    } else if *char == '*' {
                         iter.next();
                         break;
                     } else if ['`', '_', '-', '/'].contains(char) {
@@ -174,7 +189,9 @@ impl TextToken {
                 let mut ret = vec![Self::from_iter(iter)];
 
                 while let Some(char) = iter.peek() {
-                    if *char == '/' {
+                    if *char == '\n' {
+                        return Self::TextExtra('/', ret);
+                    } else if *char == '/' {
                         iter.next();
                         break;
                     } else if ['`', '_', '-', '*'].contains(char) {
