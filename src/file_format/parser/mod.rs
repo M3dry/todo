@@ -388,6 +388,11 @@ pub enum TextOp {
     Crossed(Vec<TextOp>),
     Bold(Vec<TextOp>),
     Italic(Vec<TextOp>),
+    Link {
+        name: String,
+        handler: String,
+        path: String,
+    },
     TextExtra(char, Vec<TextOp>),
     Normal(String),
 }
@@ -410,6 +415,15 @@ impl From<TextToken> for TextOp {
             TextToken::Italic(tokens) => {
                 Self::Italic(tokens.into_iter().map(|token| Self::from(token)).collect())
             }
+            TextToken::Link {
+                name,
+                handler,
+                path,
+            } => Self::Link {
+                name,
+                handler,
+                path,
+            },
             TextToken::TextExtra(char, tokens) => Self::TextExtra(
                 char,
                 tokens.into_iter().map(|token| Self::from(token)).collect(),
@@ -460,6 +474,11 @@ impl std::fmt::Display for TextOp {
                         .collect::<Vec<String>>()
                         .join("")
                 ),
+                Self::Link {
+                    name,
+                    handler,
+                    path,
+                } => format!("|{name}[{handler}:{path}]|"),
                 Self::TextExtra(char, strs) => {
                     format!(
                         "{char}{}",

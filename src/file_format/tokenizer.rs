@@ -1,4 +1,4 @@
-use std::{str::FromStr, collections::VecDeque, iter::Peekable};
+use std::{collections::VecDeque, str::FromStr};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Token {
@@ -24,20 +24,21 @@ impl FromStr for Tokens {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut tokens = VecDeque::new();
-        let mut chars = s.chars().peekable();
+        let mut chars = VecDeque::from_iter(s.chars());
+        let mut last = Token::Newline;
 
-        while let Some(char) = chars.peek() {
+        while let Some(char) = chars.get(0) {
             match char {
-                '[' => {
-                    chars.next();
+                '[' if matches!(last, Token::Newline) => {
+                    chars.pop_front();
                     tokens.push_back(Token::BracketOpen);
                     let mut inside = vec![];
 
-                    while let Some(' ') = chars.peek() {
-                        chars.next();
+                    while let Some(' ') = chars.get(0) {
+                        chars.pop_front();
                     }
-                    
-                    while let Some(char) = chars.next() {
+
+                    while let Some(char) = chars.pop_front() {
                         if char == ']' {
                             break;
                         }
@@ -47,16 +48,18 @@ impl FromStr for Tokens {
 
                     tokens.push_back(Token::Inside(inside.into_iter().collect()));
                     tokens.push_back(Token::BracketClose);
-                },
-                '#' => {
-                    chars.next();
+
+                    last = Token::BracketClose;
+                }
+                '#' if matches!(last, Token::Newline) => {
+                    chars.pop_front();
                     let mut heading = vec![];
 
-                    while let Some(' ') = chars.peek() {
-                        chars.next();
+                    while let Some(' ') = chars.get(0) {
+                        chars.pop_front();
                     }
 
-                    while let Some(char) = chars.next() {
+                    while let Some(char) = chars.pop_front() {
                         if char == '\n' {
                             tokens.push_back(Token::Heading(heading.into_iter().collect()));
                             tokens.push_back(Token::Newline);
@@ -65,28 +68,33 @@ impl FromStr for Tokens {
 
                         heading.push(char);
                     }
+
+                    last = Token::Newline;
                 }
                 '\n' => {
-                    chars.next();
-                    tokens.push_back(Token::Newline)
-                },
+                    chars.pop_front();
+                    tokens.push_back(Token::Newline);
+                    last = Token::Newline;
+                }
                 '-' => {
-                    chars.next();
-                    while let Some(' ') = chars.peek() {
-                        chars.next();
+                    chars.pop_front();
+                    while let Some(' ') = chars.get(0) {
+                        chars.pop_front();
                     }
-                    
-                    tokens.push_back(Token::Bullet(TextTokens::from_iter(&mut chars)))
-                },
+
+                    last = Token::Bullet(TextTokens(VecDeque::new()));
+                    tokens.push_back(Token::Bullet(TextTokens::from_vecdeque(&mut chars)));
+                }
                 ' ' => {
-                    chars.next();
-                },
+                    chars.pop_front();
+                }
                 _ => {
-                    while let Some(' ') = chars.peek() {
-                        chars.next();
+                    while let Some(' ') = chars.get(0) {
+                        chars.pop_front();
                     }
-                    
-                    tokens.push_back(Token::Text(TextTokens::from_iter(&mut chars)))
+
+                    last = Token::Text(TextTokens(VecDeque::new()));
+                    tokens.push_back(Token::Text(TextTokens::from_vecdeque(&mut chars)))
                 }
             }
         }
@@ -102,27 +110,32 @@ pub enum TextToken {
     Crossed(Vec<TextToken>),
     Bold(Vec<TextToken>),
     Italic(Vec<TextToken>),
+    Link {
+        name: String,
+        handler: String,
+        path: String,
+    },
     TextExtra(char, Vec<TextToken>),
     Text(String),
 }
 
 impl TextToken {
-    fn from_iter<I: Iterator<Item = char>>(iter: &mut Peekable<I>) -> Self {
-        match iter.peek().unwrap() {
+    fn from_vecdeque(chars: &mut VecDeque<char>) -> Self {
+        match chars.get(0).unwrap() {
             '\n' => return Self::Text(format!("")),
             '`' => {
-                iter.next();
-                let mut ret = vec![Self::from_iter(iter)];
+                chars.pop_front();
+                let mut ret = vec![Self::from_vecdeque(chars)];
 
-                while let Some(char) = iter.peek() {
+                while let Some(char) = chars.get(0) {
                     if *char == '\n' {
                         return Self::TextExtra('`', ret);
                     } else if *char == '`' {
-                        iter.next();
+                        chars.pop_front();
                         break;
                     } else if ['_', '-', '*', '/'].contains(char) {
                         let ch = *char;
-                        let token = Self::from_iter(iter);
+                        let token = Self::from_vecdeque(chars);
 
                         if matches!(&token, Self::Text(text) if text.is_empty()) {
                             ret.push(Self::TextExtra(ch, vec![]))
@@ -132,83 +145,96 @@ impl TextToken {
                 }
 
                 return Self::Verbatim(ret);
-            },
+            }
             '_' => {
-                iter.next();
-                let mut ret = vec![Self::from_iter(iter)];
+                chars.pop_front();
+                let mut ret = vec![Self::from_vecdeque(chars)];
 
-                while let Some(char) = iter.peek() {
+                while let Some(char) = chars.get(0) {
                     if *char == '\n' {
                         return Self::TextExtra('_', ret);
                     } else if *char == '_' {
-                        iter.next();
+                        chars.pop_front();
                         break;
                     } else if ['`', '-', '*', '/'].contains(char) {
-                        ret.push(Self::from_iter(iter));
+                        ret.push(Self::from_vecdeque(chars));
                     }
                 }
 
                 return Self::Underline(ret);
-            },
+            }
             '-' => {
-                iter.next();
-                let mut ret = vec![Self::from_iter(iter)];
+                chars.pop_front();
+                let mut ret = vec![Self::from_vecdeque(chars)];
 
-                while let Some(char) = iter.peek() {
+                while let Some(char) = chars.get(0) {
                     if *char == '\n' {
                         return Self::TextExtra('-', ret);
                     } else if *char == '-' {
-                        iter.next();
+                        chars.pop_front();
                         break;
                     } else if ['`', '_', '*', '/'].contains(char) {
-                        ret.push(Self::from_iter(iter));
+                        ret.push(Self::from_vecdeque(chars));
                     }
                 }
 
                 return Self::Crossed(ret);
-            },
+            }
             '*' => {
-                iter.next();
-                let mut ret = vec![Self::from_iter(iter)];
+                chars.pop_front();
+                let mut ret = vec![Self::from_vecdeque(chars)];
 
-                while let Some(char) = iter.peek() {
+                while let Some(char) = chars.get(0) {
                     if *char == '\n' {
                         return Self::TextExtra('*', ret);
                     } else if *char == '*' {
-                        iter.next();
+                        chars.pop_front();
                         break;
                     } else if ['`', '_', '-', '/'].contains(char) {
-                        ret.push(Self::from_iter(iter));
+                        ret.push(Self::from_vecdeque(chars));
                     }
                 }
 
                 return Self::Bold(ret);
-            },
+            }
             '/' => {
-                iter.next();
-                let mut ret = vec![Self::from_iter(iter)];
+                chars.pop_front();
+                let mut ret = vec![Self::from_vecdeque(chars)];
 
-                while let Some(char) = iter.peek() {
+                while let Some(char) = chars.get(0) {
                     if *char == '\n' {
                         return Self::TextExtra('/', ret);
                     } else if *char == '/' {
-                        iter.next();
+                        chars.pop_front();
                         break;
                     } else if ['`', '_', '-', '*'].contains(char) {
-                        ret.push(Self::from_iter(iter));
+                        ret.push(Self::from_vecdeque(chars));
                     }
                 }
 
                 return Self::Italic(ret);
+            }
+            '|' => {
+                chars.pop_front();
+
+                for ch in &*chars {
+                    if *ch == '|' {
+                        return Self::Link { name: todo!(), handler: todo!(), path: todo!() };
+                    } else if *ch == '\n' {
+                        return Self::TextExtra('|', vec![Self::from_vecdeque(chars)]);
+                    }
+                }
+
+                todo!()
             },
             _ => {
-                let mut text = vec![iter.next().unwrap()];
-                while let Some(char) = iter.peek() {
+                let mut text = vec![chars.pop_front().unwrap()];
+                while let Some(char) = chars.get(0) {
                     if ['`', '_', '-', '*', '/', '\n'].contains(char) {
                         break;
                     }
 
-                    text.push(iter.next().unwrap())
+                    text.push(chars.pop_front().unwrap())
                 }
 
                 return Self::Text(text.into_iter().collect());
@@ -225,13 +251,13 @@ impl TextTokens {
         self.0
     }
 
-    fn from_iter<I: Iterator<Item = char>>(iter: &mut Peekable<I>) -> Self {
+    fn from_vecdeque(chars: &mut VecDeque<char>) -> Self {
         let mut tokens = VecDeque::new();
 
-        while let Some(char) = iter.peek() {
+        while let Some(char) = chars.get(0) {
             match char {
                 '\n' => return Self(tokens),
-                _ => tokens.push_back(TextToken::from_iter(iter))
+                _ => tokens.push_back(TextToken::from_vecdeque(chars)),
             }
         }
 

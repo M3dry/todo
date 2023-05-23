@@ -57,6 +57,7 @@ enum Command {
     Raw,
     EwwShow,
     Config,
+    Tokens,
 }
 
 fn main() {
@@ -182,6 +183,12 @@ fn main() {
         Command::Config => {
             let config = Config::get().unwrap();
             println!("{}", serde_json::to_string_pretty(&config).unwrap());
+        }
+        Command::Tokens if exists => {
+            let tokens: Tokens = std::fs::read_to_string(&file).unwrap().parse().unwrap();
+            let vecdeque = tokens.to_vecdeque();
+
+            println!("{vecdeque:#?}")
         }
         _ => eprintln!("File doesn't exist"),
     }

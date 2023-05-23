@@ -64,6 +64,7 @@ fn op_to_string(op: &TextOp) -> String {
                 .collect::<Vec<String>>()
                 .join("")
         ),
+        TextOp::Link { name, handler, path } => todo!(),
         TextOp::TextExtra(char, ops) => format!(
             "(box :space-evenly false :halign \"start\" (label :halign \"start\" :text \"{char}\") {})",
             ops.into_iter()
