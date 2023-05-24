@@ -64,7 +64,10 @@ fn op_to_string(op: &TextOp) -> String {
                 .collect::<Vec<String>>()
                 .join("")
         ),
-        TextOp::Link { name, handler, path } => todo!(),
+        TextOp::Link { name, handler, path } => format!(
+            "(button :onclick \"todo t link-open \\\"{}\\\" \\\"{path}\\\"\" :halign \"start\" (label :style \"font-decoration: underline;\" :halign \"start\" :text \"{name}\"))",
+            handler.to_string()
+        ),
         TextOp::TextExtra(char, ops) => format!(
             "(box :space-evenly false :halign \"start\" (label :halign \"start\" :text \"{char}\") {})",
             ops.into_iter()

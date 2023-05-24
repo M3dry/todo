@@ -4,9 +4,10 @@ use chrono::{Duration, Local};
 use clap::{Parser, Subcommand, ValueEnum};
 use config::Config;
 use file_format::{
-    parser::{self, Parse},
+    parser::{self, Handler, Parse},
     tokenizer::Tokens,
 };
+use mlua::Lua;
 
 mod config;
 mod file_format;
@@ -56,6 +57,14 @@ enum Command {
     Show,
     Raw,
     EwwShow,
+    OpenLink {
+        id: usize,
+    },
+    OpenLinkRaw {
+        handler: String,
+        path: String,
+    },
+    ListLinks,
     Config,
     Tokens,
 }
@@ -168,17 +177,82 @@ fn main() {
             println!(
                 "{}",
                 match parser::File::parse(&config, &mut vecdeque) {
-                    Ok(ok) => serde_json::to_string_pretty(&file_format::eww::EwwTodo::from_todos(
+                    Ok(ok) => serde_json::to_string_pretty(&file_format::eww::EwwTodo::from_todos({
+                        println!("{ok:#?}");
+
                         ok.headings()
                             .into_iter()
                             .flat_map(|heading| heading.todos())
-                            .collect(),
-                        &config
-                    ))
+                            .collect()
+                    }, &config))
                     .unwrap(),
                     Err(err) => err.to_string(),
                 }
             )
+        }
+        Command::ListLinks if exists => {
+            let mut tokens = std::fs::read_to_string(&file)
+                .unwrap()
+                .parse::<Tokens>()
+                .unwrap()
+                .to_vecdeque();
+
+            println!(
+                "{}",
+                match parser::File::parse(&config, &mut tokens) {
+                    Ok(ok) => {
+                        ok.headings()
+                            .into_iter()
+                            .flat_map(|heading| {
+                                heading.links().into_iter().map(|link| {
+                                    let (name, handler, path) = link;
+
+                                    format!("{name} - {handler}:{path}")
+                                })
+                            })
+                            .enumerate()
+                            .map(|(i, str)| format!("{i} {str}"))
+                            .collect()
+                    }
+                    Err(err) => err.to_string(),
+                }
+            )
+        }
+        Command::OpenLink { id } => {
+            let mut tokens = std::fs::read_to_string(&file)
+                .unwrap()
+                .parse::<Tokens>()
+                .unwrap()
+                .to_vecdeque();
+
+            match parser::File::parse(&config, &mut tokens) {
+                Ok(ok) => {
+                    let links = ok.headings()
+                        .into_iter()
+                        .flat_map(|heading| {
+                            heading.links()
+                        })
+                        .collect::<Vec<(&String, &Handler, &String)>>();
+
+                    if let Some(link) = links.get(id) {
+                        let lua = Lua::new();
+
+                        link.1.open(link.2.to_string(), Config::get_handlers(&lua).unwrap())
+                    } else {
+                        eprintln!("Id is out of bounds, max is {}", links.len() - 1)
+                    }
+                }
+                Err(err) => println!("{}", err.to_string()),
+            }
+        }
+        Command::OpenLinkRaw { handler, path } => {
+            let lua = Lua::new();
+            let handler = file_format::parser::Handler::from((
+                file_format::tokenizer::Handler(handler),
+                &config,
+            ));
+
+            handler.open(path, Config::get_handlers(&lua).unwrap())
         }
         Command::Config => {
             let config = Config::get().unwrap();

@@ -1,9 +1,10 @@
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 
 use crate::config::Config;
 
 use super::tokenizer::{TextToken, Token};
 use error::{Error, ParserError, ParserErrorStack};
+use mlua::Function;
 use serde::{Deserialize, Serialize};
 use textwrap::termwidth;
 
@@ -75,6 +76,34 @@ impl Heading {
             .filter_map(|under| match under {
                 UnderHeading::Todo(todo) => Some(todo),
                 _ => None,
+            })
+            .collect()
+    }
+
+    pub fn links(&self) -> Vec<(&String, &Handler, &String)> {
+        self.body
+            .iter()
+            .flat_map(|under| {
+                let Text(text_ops) = match under {
+                    UnderHeading::Text(PrintText(text)) => text,
+                    UnderHeading::Bullet(Bullet { text, .. }) => text,
+                    UnderHeading::Todo(Todo { description, .. }) => description,
+                };
+                text_ops
+                    .into_iter()
+                    .filter_map(|op| {
+                        if let TextOp::Link {
+                            name,
+                            handler,
+                            path,
+                        } = op
+                        {
+                            Some((name, handler, path))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<(&String, &Handler, &String)>>()
             })
             .collect()
     }
@@ -320,6 +349,12 @@ impl Parse for Bullet {
 #[derive(Debug, Serialize, Deserialize)]
 struct PrintText(Text);
 
+impl PrintText {
+    pub fn text(&self) -> &Text {
+        &self.0
+    }
+}
+
 impl Parse for PrintText {
     fn parse(config: &Config, tokens: &mut VecDeque<Token>) -> Result<Self, ParserError>
     where
@@ -346,7 +381,7 @@ impl Parse for PrintText {
 pub struct Text(pub Vec<TextOp>);
 
 impl Parse for Text {
-    fn parse(_: &Config, tokens: &mut VecDeque<Token>) -> Result<Self, ParserError>
+    fn parse(config: &Config, tokens: &mut VecDeque<Token>) -> Result<Self, ParserError>
     where
         Self: Sized,
     {
@@ -360,7 +395,7 @@ impl Parse for Text {
                 _ => unreachable!(),
             }
             .into_iter()
-            .map(|op| TextOp::from(op))
+            .map(|op| TextOp::from((op, config)))
             .collect(),
         ))
     }
@@ -382,6 +417,56 @@ impl Parse for Text {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub enum Handler {
+    Custom(String),
+    Unknown(String),
+}
+
+impl Handler {
+    pub fn open<'lua>(&self, path: String, handlers: HashMap<String, Function<'lua>>) {
+        match self {
+            Self::Custom(str) => {
+                if let Some(func) = handlers.get(str) {
+                    func.call::<_, ()>(path).unwrap();
+                }
+            }
+            Self::Unknown(str) => panic!(
+                "cant find link handler for {str:?}, also I need to do better error handling"
+            ),
+        }
+    }
+
+    pub fn to_string(&self) -> &String {
+        match self {
+            Self::Custom(str) | Self::Unknown(str) => &str,
+        }
+    }
+}
+
+impl From<(super::tokenizer::Handler, &Config)> for Handler {
+    fn from((value, config): (super::tokenizer::Handler, &Config)) -> Self {
+        use super::tokenizer::Handler as THandler;
+
+        match value {
+            THandler(str) if config.link_handlers.contains(&str) => Self::Custom(str),
+            THandler(str) => Self::Unknown(str),
+        }
+    }
+}
+
+impl std::fmt::Display for Handler {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Custom(str) | Self::Unknown(str) => str.as_str(),
+            }
+        )
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub enum TextOp {
     Verbatim(Vec<TextOp>),
     Underline(Vec<TextOp>),
@@ -390,43 +475,61 @@ pub enum TextOp {
     Italic(Vec<TextOp>),
     Link {
         name: String,
-        handler: String,
+        handler: Handler,
         path: String,
     },
     TextExtra(char, Vec<TextOp>),
     Normal(String),
 }
 
-impl From<TextToken> for TextOp {
-    fn from(value: TextToken) -> Self {
+impl From<(TextToken, &Config)> for TextOp {
+    fn from((value, config): (TextToken, &Config)) -> Self {
         match value {
-            TextToken::Verbatim(tokens) => {
-                Self::Verbatim(tokens.into_iter().map(|token| Self::from(token)).collect())
-            }
-            TextToken::Underline(tokens) => {
-                Self::Underline(tokens.into_iter().map(|token| Self::from(token)).collect())
-            }
-            TextToken::Crossed(tokens) => {
-                Self::Crossed(tokens.into_iter().map(|token| Self::from(token)).collect())
-            }
-            TextToken::Bold(tokens) => {
-                Self::Bold(tokens.into_iter().map(|token| Self::from(token)).collect())
-            }
-            TextToken::Italic(tokens) => {
-                Self::Italic(tokens.into_iter().map(|token| Self::from(token)).collect())
-            }
+            TextToken::Verbatim(tokens) => Self::Verbatim(
+                tokens
+                    .into_iter()
+                    .map(|token| Self::from((token, config)))
+                    .collect(),
+            ),
+            TextToken::Underline(tokens) => Self::Underline(
+                tokens
+                    .into_iter()
+                    .map(|token| Self::from((token, config)))
+                    .collect(),
+            ),
+            TextToken::Crossed(tokens) => Self::Crossed(
+                tokens
+                    .into_iter()
+                    .map(|token| Self::from((token, config)))
+                    .collect(),
+            ),
+            TextToken::Bold(tokens) => Self::Bold(
+                tokens
+                    .into_iter()
+                    .map(|token| Self::from((token, config)))
+                    .collect(),
+            ),
+            TextToken::Italic(tokens) => Self::Italic(
+                tokens
+                    .into_iter()
+                    .map(|token| Self::from((token, config)))
+                    .collect(),
+            ),
             TextToken::Link {
                 name,
                 handler,
                 path,
             } => Self::Link {
                 name,
-                handler,
+                handler: Handler::from((handler, config)),
                 path,
             },
             TextToken::TextExtra(char, tokens) => Self::TextExtra(
                 char,
-                tokens.into_iter().map(|token| Self::from(token)).collect(),
+                tokens
+                    .into_iter()
+                    .map(|token| Self::from((token, config)))
+                    .collect(),
             ),
             TextToken::Text(str) => Self::Normal(str),
         }
@@ -478,7 +581,7 @@ impl std::fmt::Display for TextOp {
                     name,
                     handler,
                     path,
-                } => format!("|{name}[{handler}:{path}]|"),
+                } => format!("|{name}|"),
                 Self::TextExtra(char, strs) => {
                     format!(
                         "{char}{}",

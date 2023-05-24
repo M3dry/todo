@@ -1,5 +1,7 @@
 use std::{collections::VecDeque, str::FromStr};
 
+use serde::{Serialize, Deserialize};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Token {
     BracketOpen,
@@ -104,6 +106,9 @@ impl FromStr for Tokens {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Handler(pub String);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TextToken {
     Verbatim(Vec<TextToken>),
     Underline(Vec<TextToken>),
@@ -112,12 +117,14 @@ pub enum TextToken {
     Italic(Vec<TextToken>),
     Link {
         name: String,
-        handler: String,
+        handler: Handler,
         path: String,
     },
     TextExtra(char, Vec<TextToken>),
     Text(String),
 }
+
+
 
 impl TextToken {
     fn from_vecdeque(chars: &mut VecDeque<char>) -> Self {
@@ -133,7 +140,7 @@ impl TextToken {
                     } else if *char == '`' {
                         chars.pop_front();
                         break;
-                    } else if ['_', '-', '*', '/'].contains(char) {
+                    } else if ['_', '-', '*', '/', '|'].contains(char) {
                         let ch = *char;
                         let token = Self::from_vecdeque(chars);
 
@@ -156,7 +163,7 @@ impl TextToken {
                     } else if *char == '_' {
                         chars.pop_front();
                         break;
-                    } else if ['`', '-', '*', '/'].contains(char) {
+                    } else if ['`', '-', '*', '/', '|'].contains(char) {
                         ret.push(Self::from_vecdeque(chars));
                     }
                 }
@@ -173,7 +180,7 @@ impl TextToken {
                     } else if *char == '-' {
                         chars.pop_front();
                         break;
-                    } else if ['`', '_', '*', '/'].contains(char) {
+                    } else if ['`', '_', '*', '/', '|'].contains(char) {
                         ret.push(Self::from_vecdeque(chars));
                     }
                 }
@@ -190,7 +197,7 @@ impl TextToken {
                     } else if *char == '*' {
                         chars.pop_front();
                         break;
-                    } else if ['`', '_', '-', '/'].contains(char) {
+                    } else if ['`', '_', '-', '/', '|'].contains(char) {
                         ret.push(Self::from_vecdeque(chars));
                     }
                 }
@@ -207,7 +214,7 @@ impl TextToken {
                     } else if *char == '/' {
                         chars.pop_front();
                         break;
-                    } else if ['`', '_', '-', '*'].contains(char) {
+                    } else if ['`', '_', '-', '*', '|'].contains(char) {
                         ret.push(Self::from_vecdeque(chars));
                     }
                 }
@@ -216,21 +223,67 @@ impl TextToken {
             }
             '|' => {
                 chars.pop_front();
+                let mut inorder = [false; 4];
 
-                for ch in &*chars {
-                    if *ch == '|' {
-                        return Self::Link { name: todo!(), handler: todo!(), path: todo!() };
+                for (i, ch )in chars.iter().enumerate() {
+                    if *ch == '[' && !inorder[1] && !inorder[2] {
+                        inorder[0] = true;
+                    } else if *ch == ':' && inorder[0] && !inorder[2] {
+                        inorder[1] = true;
+                    } else if *ch == ']' && inorder[0] && inorder[1] {
+                        inorder[2] = true;
+
+                        if chars.len() > i + 1 && chars[i + 1] == '|' {
+                            inorder[3] = true;
+                            break;
+                        }
                     } else if *ch == '\n' {
                         return Self::TextExtra('|', vec![Self::from_vecdeque(chars)]);
                     }
                 }
 
-                todo!()
+                if inorder.into_iter().all(|v| v) {
+                    let mut name = vec![];
+                    let mut handler = vec![];
+                    let mut path = vec![];
+
+                    while let Some(ch) = chars.pop_front() {
+                        if ch == '[' {
+                            break;
+                        }
+
+                        name.push(ch);
+                    }
+
+                    while let Some(ch) = chars.pop_front() {
+                        if ch == ':' {
+                            break;
+                        }
+
+                        handler.push(ch);
+                    }
+
+                    while let Some(ch) = chars.pop_front() {
+                        if ch == ']' {
+                            break;
+                        }
+
+                        path.push(ch);
+                    }
+                    
+                    if chars.pop_front() == Some('|') {
+                        return Self::Link { name: name.into_iter().collect(), handler: Handler(handler.into_iter().collect()), path: path.into_iter().collect() }
+                    } else {
+                        panic!("cant do this, do better error handling for tokenizer, dummy");
+                    }
+                } else {
+                    return Self::TextExtra('|', vec![Self::from_vecdeque(chars)]);
+                }
             },
             _ => {
                 let mut text = vec![chars.pop_front().unwrap()];
                 while let Some(char) = chars.get(0) {
-                    if ['`', '_', '-', '*', '/', '\n'].contains(char) {
+                    if ['`', '_', '-', '*', '/', '\n', '|'].contains(char) {
                         break;
                     }
 

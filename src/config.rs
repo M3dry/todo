@@ -1,7 +1,7 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::{HashMap, HashSet}, path::PathBuf};
 
-use mlua::{Lua, Result as LuaResult, Table};
-use serde::{Serialize, Deserialize};
+use mlua::{Function, Lua, Result as LuaResult, Table};
+use serde::{Deserialize, Serialize};
 use shellexpand::tilde;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -12,6 +12,7 @@ pub struct Config {
     pub bullet_point: Option<String>,
     pub todo_state_ops: Option<TodoStateOps>,
     pub todo_state: HashMap<String, String>,
+    pub link_handlers: HashSet<String>,
 }
 
 impl Config {
@@ -44,6 +45,31 @@ impl Config {
         })
     }
 
+    pub fn get_handlers<'lua>(lua: &'lua Lua) -> LuaResult<HashMap<String, Function<'lua>>> {
+        let config = xdg::BaseDirectories::with_prefix("todo").unwrap();
+        let config_path = config.place_config_file("config.lua").unwrap();
+
+        if !config_path.exists() {
+            std::fs::write(
+                &config_path,
+                r#"return {
+    directory = "~/todo",
+}"#,
+            )
+            .unwrap();
+        }
+
+        Ok({
+            let mut table = lua.load(&std::fs::read_to_string(&config_path).unwrap()).eval::<Table>()?;
+
+            if let Some(table) = table.get::<_, Option<Table>>("link_handlers")? {
+                HashMap::from_iter(table.pairs::<String, Function>().into_iter().filter_map(|pair| pair.ok()))
+            } else {
+                HashMap::new()
+            }
+        })
+    }
+
     fn from_table(table: Table) -> LuaResult<Self> {
         Ok(Self {
             template: table
@@ -67,6 +93,19 @@ impl Config {
                 )
             } else {
                 HashMap::new()
+            },
+            link_handlers: if let Some(table) = table.get::<_, Option<Table>>("link_handlers")? {
+                HashSet::from_iter(
+                    table
+                        .pairs::<String, Function>()
+                        .into_iter()
+                        .filter_map(|pair| match pair {
+                            Ok((key, _)) => Some(key),
+                            _ => None,
+                        }),
+                )
+            } else {
+                HashSet::new()
             },
         })
     }
