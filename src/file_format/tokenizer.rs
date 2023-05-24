@@ -226,9 +226,9 @@ impl TextToken {
                 let mut inorder = [false; 4];
 
                 for (i, ch )in chars.iter().enumerate() {
-                    if *ch == '[' && !inorder[1] && !inorder[2] {
+                    if *ch == '[' && !inorder[1] && !inorder[2] && chars.len() > i + 1 && chars[i + 1] != ':' {
                         inorder[0] = true;
-                    } else if *ch == ':' && inorder[0] && !inorder[2] {
+                    } else if *ch == ':' && inorder[0] && !inorder[2] && chars.len() > i + 1 && chars[i + 1] != ']' {
                         inorder[1] = true;
                     } else if *ch == ']' && inorder[0] && inorder[1] {
                         inorder[2] = true;
