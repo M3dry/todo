@@ -177,14 +177,13 @@ fn main() {
             println!(
                 "{}",
                 match parser::File::parse(&config, &mut vecdeque) {
-                    Ok(ok) => serde_json::to_string_pretty(&file_format::eww::EwwTodo::from_todos({
-                        println!("{ok:#?}");
-
+                    Ok(ok) => serde_json::to_string_pretty(&file_format::eww::EwwTodo::from_todos(
                         ok.headings()
                             .into_iter()
                             .flat_map(|heading| heading.todos())
-                            .collect()
-                    }, &config))
+                            .collect(),
+                        &config
+                    ))
                     .unwrap(),
                     Err(err) => err.to_string(),
                 }
@@ -227,17 +226,17 @@ fn main() {
 
             match parser::File::parse(&config, &mut tokens) {
                 Ok(ok) => {
-                    let links = ok.headings()
+                    let links = ok
+                        .headings()
                         .into_iter()
-                        .flat_map(|heading| {
-                            heading.links()
-                        })
+                        .flat_map(|heading| heading.links())
                         .collect::<Vec<(&String, &Handler, &String)>>();
 
                     if let Some(link) = links.get(id) {
                         let lua = Lua::new();
 
-                        link.1.open(link.2.to_string(), Config::get_handlers(&lua).unwrap())
+                        link.1
+                            .open(link.2.to_string(), Config::get_handlers(&lua).unwrap())
                     } else {
                         eprintln!("Id is out of bounds, max is {}", links.len() - 1)
                     }

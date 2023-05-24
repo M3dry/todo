@@ -65,7 +65,7 @@ fn op_to_string(op: &TextOp) -> String {
                 .join("")
         ),
         TextOp::Link { name, handler, path } => format!(
-            "(button :onclick \"todo t link-open \\\"{}\\\" \\\"{path}\\\"\" :halign \"start\" (label :style \"font-decoration: underline;\" :halign \"start\" :text \"{name}\"))",
+            "(button :style \"all: unset\" :onclick \"todo t open-link-raw \\\"{}\\\" \\\"{path}\\\" &\" :halign \"start\" (label :style \"text-decoration: underline; text-decoration-color: #ff5370;\" :halign \"start\" :text \"{name}\"))",
             handler.to_string()
         ),
         TextOp::TextExtra(char, ops) => format!(
