@@ -7,6 +7,7 @@ use shellexpand::tilde;
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
     pub template: Option<PathBuf>,
+    pub template_tmr: Option<PathBuf>,
     pub directory: PathBuf,
     pub editor: Option<String>,
     pub bullet_point: Option<String>,
@@ -39,6 +40,9 @@ impl Config {
             if let Some(template) = &mut config.template {
                 *template = PathBuf::from(tilde(template.to_str().unwrap()).to_string());
             }
+            if let Some(template) = &mut config.template_tmr {
+                *template = PathBuf::from(tilde(template.to_str().unwrap()).to_string());
+            }
             config.directory = PathBuf::from(tilde(config.directory.to_str().unwrap()).to_string());
 
             config
@@ -60,7 +64,7 @@ impl Config {
         }
 
         Ok({
-            let mut table = lua.load(&std::fs::read_to_string(&config_path).unwrap()).eval::<Table>()?;
+            let table = lua.load(&std::fs::read_to_string(&config_path).unwrap()).eval::<Table>()?;
 
             if let Some(table) = table.get::<_, Option<Table>>("link_handlers")? {
                 HashMap::from_iter(table.pairs::<String, Function>().into_iter().filter_map(|pair| pair.ok()))
@@ -74,6 +78,10 @@ impl Config {
         Ok(Self {
             template: table
                 .get::<_, String>("template")
+                .ok()
+                .map(|template| PathBuf::from(template)),
+            template_tmr: table
+                .get::<_, String>("template_tmr")
                 .ok()
                 .map(|template| PathBuf::from(template)),
             directory: PathBuf::from(table.get::<_, String>("directory")?),

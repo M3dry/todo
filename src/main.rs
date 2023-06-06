@@ -1,4 +1,4 @@
-use std::{fmt::Display, process::Stdio};
+use std::{fmt::Display, path::PathBuf, process::Stdio};
 
 use chrono::{Duration, Local};
 use clap::{Parser, Subcommand, ValueEnum};
@@ -99,7 +99,7 @@ fn main() {
         Command::New { editor: true } => {
             let template = if !day {
                 "".to_string()
-            } else if let Some(template) = &config.template {
+            } else if let Some(template) = get_template(&arg.day, &config) {
                 let template = std::fs::read_to_string(&template).unwrap();
                 template
             } else {
@@ -124,7 +124,7 @@ fn main() {
                 &file,
                 if !day {
                     "".to_string()
-                } else if let Some(template) = &config.template {
+                } else if let Some(template) = get_template(&arg.day, &config) {
                     let template = std::fs::read_to_string(&template).unwrap();
                     template
                 } else {
@@ -264,5 +264,13 @@ fn main() {
             println!("{vecdeque:#?}")
         }
         _ => eprintln!("File doesn't exist"),
+    }
+}
+
+fn get_template<'a>(day: &Option<Day>, config: &'a Config) -> &'a Option<PathBuf> {
+    if matches!(day, Some(Day::Tomorrow)) {
+        &config.template_tmr
+    } else {
+        &config.template
     }
 }
